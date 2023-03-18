@@ -11,6 +11,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
@@ -25,7 +26,7 @@ public class KMeans {
     final static String kKey = "k";
 
     public static class KmeansMapper
-            extends Mapper<Object, Text, IntWritable, PointWritable>{
+            extends Mapper<LongWritable, Text, IntWritable, PointWritable>{
 
         private int k;
         private int n;
@@ -33,15 +34,15 @@ public class KMeans {
 
         @Override
         protected void setup(Context context) {
-            this.k = context.getConfiguration().getInt(KMeans.kKey, 3);
-            this.n = context.getConfiguration().getInt(KMeans.nKey, 4);
+            this.k = context.getConfiguration().getInt(KMeans.kKey, 0);
+            this.n = context.getConfiguration().getInt(KMeans.nKey, 0);
 
             this.centroids = KMeans.getCentroidsFromConf(context.getConfiguration());
             System.out.println("end setup mapper ");
         }
 
         @Override
-        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+        public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             StringTokenizer itr = new StringTokenizer(value.toString(), ",");
             float[] point = new float[this.n];
             for (int i = 0; i < this.n; i++) {
@@ -78,7 +79,7 @@ public class KMeans {
         @Override
         protected void setup(Context context) {
 
-            this.n = context.getConfiguration().getInt(KMeans.nKey, 4);
+            this.n = context.getConfiguration().getInt(KMeans.nKey, 0);
             System.out.println("end setup combiner");
         }
         @Override
@@ -106,7 +107,7 @@ public class KMeans {
         private int n;
         @Override
         protected void setup(Context context) {
-            this.n = context.getConfiguration().getInt(KMeans.nKey, 4);
+            this.n = context.getConfiguration().getInt(KMeans.nKey, 0);
             System.out.println("end setup reducer");
         }
 
@@ -123,7 +124,6 @@ public class KMeans {
                     centroid[i] += point.getFeatures()[i];
                 }
             }
-
             for (int i = 0; i < this.n; i++) {
                 centroid[i] /= count;
             }
@@ -154,8 +154,8 @@ public class KMeans {
     }
 
     protected static float[][] getCentroidsFromConf(Configuration conf){
-        int k = conf.getInt("k", 3);
-        int n = conf.getInt("features.n", 4);
+        int k = conf.getInt(KMeans.kKey, 0);
+        int n = conf.getInt(KMeans.nKey, 0);
         float[][] centroids = new float[k][n];
 
         for (int i = 0; i < k; i++) {
@@ -168,8 +168,8 @@ public class KMeans {
     }
     
     protected static boolean isConverged(Configuration conf, float[][] oldCentroids, float[][] newCentroids){
-        int k = conf.getInt("k", 3);
-        int n = conf.getInt("features.n", 4);
+        int k = conf.getInt(KMeans.kKey, 0);
+        int n = conf.getInt(KMeans.nKey, 0);
 
         for (int i = 0; i < k; i++) {
             double distance = 0;
@@ -183,10 +183,13 @@ public class KMeans {
     }
 
     public static void main(String[] args) throws Exception {
+        System.out.println("Start K-means ...");
         Configuration conf = new Configuration();
         conf.set("fs.defaultFS", "hdfs://localhost:9000");
+        conf.setInt("mapreduce.task.io.sort.mb", 200);
         conf.setInt(KMeans.nKey, Integer.parseInt(args[0]));
         conf.setInt(KMeans.kKey, Integer.parseInt(args[1]));
+
 
         KMeans.setCentroidsFromFile(conf, args[2]);
 
@@ -198,10 +201,10 @@ public class KMeans {
         float[][] oldCentroids = getCentroidsFromConf(conf);
         boolean isConverged = false;
         while (!isConverged){
-            System.out.println("iteration " + countSteps++);
+            System.out.println("* ** *** iteration " + countSteps++ + " *** ** *");
             if (output.getFileSystem(conf).exists(output))
                 output.getFileSystem(conf).delete(output);
-            Job job = Job.getInstance(conf, "Kmeans");
+            Job job = Job.getInstance(conf, "Kmeans_" + (countSteps-1));
             job.setJarByClass(KMeans.class);
             job.setMapperClass(KmeansMapper.class);
             job.setCombinerClass(KmeansCombiner.class);
